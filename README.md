@@ -6,14 +6,10 @@ A real-time phone detection web application that uses TensorFlow.js and your dev
 
 - Real-time object detection using TensorFlow.js
 - Works directly in the browser with no server required
-- Responsive design that works on both desktop and mobile devices
-- Visual feedback with bounding boxes around detected objects
-- Freeze frame functionality when a phone is detected
-- Simple and intuitive user interface
 
 ## How It Works
 
-The app uses the COCO-SSD (Common Objects in Context - Single Shot MultiBox Detection) model to detect objects in real-time through your device's camera feed. When a cell phone is detected with high confidence, the app will:
+The app uses the COCO-SSD model to detect objects in real-time through your device's camera feed. When a cell phone is detected with high confidence, the app will:
 1. Freeze the current frame
 2. Draw a bounding box around the detected phone
 3. Display a "PHONE DETECTED" message
@@ -22,13 +18,12 @@ The app uses the COCO-SSD (Common Objects in Context - Single Shot MultiBox Dete
 
 ### Prerequisites
 
-- A modern web browser (Chrome, Firefox, Safari, Edge)
 - A working webcam
 - Internet connection (required for loading the TensorFlow.js model)
 
 ### Installation
 
-No installation is required! Simply open the `phone_finder.html` file in your web browser, or visit the [GitHub Pages](https://onepalebluedot.github.io/phone-finder/) if hosted.
+No installation is required! Simply open the `phone_finder.html` file in your web browser.
 
 ### Usage
 
@@ -44,15 +39,10 @@ No installation is required! Simply open the `phone_finder.html` file in your we
 - Uses TensorFlow.js for machine learning in the browser
 - Implements the COCO-SSD pre-trained model for object detection
 - Real-time processing with requestAnimationFrame for smooth performance
-- Responsive design that works on various screen sizes
 
 ## Browser Compatibility
 
-This app works best in modern browsers with WebGL support. It has been tested on:
-- Google Chrome (latest)
-- Mozilla Firefox (latest)
-- Apple Safari (latest)
-- Microsoft Edge (latest)
+This app works best in modern browsers with WebGL support. 
 
 ## License
 
@@ -70,7 +60,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Author
 
-[Your Name] - [@yourtwitter](https://twitter.com/yourtwitter)
+Onepalebluedot
 
 ---
 
