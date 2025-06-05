@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Detection Camera</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf-backend-webgl.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: #2d2d2d;
+            border: 1px solid #444;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            color: #f0f0f0;
+            font-weight: normal;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .camera-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        #video {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border: 2px solid #555;
+            background: #000;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 2px solid #555;
+            pointer-events: none;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: 1px solid #666;
+            background: #3a3a3a;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover:not(:disabled) {
+            background: #4a4a4a;
+            border-color: #777;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #2a2a2a;
+        }
+
+        .status {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            color: #ccc;
+        }
+
+        .loading {
+            color: #ffcc00;
+        }
+
+        .detecting {
+            color: #00aaff;
+        }
+
+        .phone-found {
+            background: #2a5a2a;
+            color: #90ff90;
+            padding: 12px;
+            border: 1px solid #4a7a4a;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .detection-info {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 12px;
+            color: #888;
+            font-family: 'Courier New', monospace;
+        }
+
+        .error {
+            background: #5a2a2a;
+            color: #ff9090;
+            padding: 12px;
+            border: 1px solid #7a4a4a;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Phone Detection System</h1>
+        
+        <div class="status" id="status">Click "Start Camera" to begin phone detection</div>
+        
+        <div class="controls">
+            <button id="startBtn">Start Camera</button>
+            <button id="stopBtn" disabled>Stop Camera</button>
+        </div>
+        
+        <div class="camera-container">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div id="phoneFound" class="phone-found" style="display: none;">
+            PHONE DETECTED
+        </div>
+        
+        <div class="detection-info">
+            TensorFlow.js COCO-SSD Model | Real-time Object Detection
+        </div>
+    </div>
+
+    <script>
+        let video, canvas, ctx, model, stream;
+        let isDetecting = false;
+        let phoneDetected = false;
+        let detectionInterval;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        const phoneFoundDiv = document.getElementById('phoneFound');
+
+        async function setupCamera() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        width: 640, 
+                        height: 480,
+                        facingMode: 'user'
+                    }
+                });
+                
+                video.srcObject = stream;
+                
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                updateStatus('❌ Error accessing camera. Please ensure camera permissions are granted.', 'error');
+                throw err;
+            }
+        }
+
+        async function loadModel() {
+            updateStatus('🔄 Loading AI model...', 'loading');
+            try {
+                // Load the COCO-SSD model from CDN
+                if (typeof cocoSsd === 'undefined') {
+                    await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2');
+                }
+                model = await cocoSsd.load();
+                console.log('Model loaded successfully');
+                return model;
+            } catch (err) {
+                console.error('Error loading model:', err);
+                updateStatus('❌ Error loading AI model', 'error');
+                throw err;
+            }
+        }
+
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        async function detectObjects() {
+            if (!model || !video || phoneDetected || !isDetecting) return;
+
+            try {
+                const predictions = await model.detect(video);
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Check for phone/cell phone detections with lower threshold
+                const phoneDetections = predictions.filter(prediction => 
+                    prediction.class === 'cell phone' && prediction.score > 0.3
+                );
+
+                // Debug: log all detections
+                if (predictions.length > 0) {
+                    console.log('Detected objects:', predictions.map(p => `${p.class} (${Math.round(p.score * 100)}%)`));
+                }
+
+                if (phoneDetections.length > 0) {
+                    phoneDetected = true;
+                    isDetecting = false; // Stop detection loop
+                    
+                    // Capture the current video frame to canvas (freeze the image)
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    // Draw detection bounding boxes on top of the frozen frame
+                    phoneDetections.forEach(prediction => {
+                        drawBoundingBox(prediction, true);
+                    });
+                    
+                    // Hide the video visually but keep its layout space
+                    video.style.visibility = 'hidden';
+                    video.style.opacity = '0';
+                    // Keep the canvas absolutely positioned and centered
+                    canvas.style.position = 'absolute';
+                    canvas.style.transform = 'translateX(-50%)';
+                    
+                    updateStatus('PHONE DETECTED - Frame frozen', 'detecting');
+                    phoneFoundDiv.style.display = 'block';
+                    
+                    // Stop the detection interval
+                    if (detectionInterval) {
+                        clearInterval(detectionInterval);
+                        detectionInterval = null;
+                    }
+                    
+                    return;
+                }
+
+                // Draw bounding boxes for all detections (for debugging)
+                predictions.forEach(prediction => {
+                    if (prediction.score > 0.2) {
+                        drawBoundingBox(prediction, false);
+                    }
+                });
+
+            } catch (err) {
+                console.error('Detection error:', err);
+                updateStatus('❌ Detection error occurred', 'error');
+            }
+        }
+
+        function drawBoundingBox(prediction, isPhone = true) {
+            const [x, y, width, height] = prediction.bbox;
+            
+            if (isPhone) {
+                // Bright green box for detected phone
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 3;
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+            } else {
+                // Gray box for other objects
+                ctx.strokeStyle = '#666666';
+                ctx.lineWidth = 1;
+                ctx.fillStyle = 'rgba(100, 100, 100, 0.05)';
+            }
+            
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeRect(x, y, width, height);
+            
+            // Draw label
+            ctx.fillStyle = isPhone ? '#00ff00' : '#666666';
+            ctx.font = '12px Courier New';
+            const label = `${prediction.class.toUpperCase()} ${Math.round(prediction.score * 100)}%`;
+            const textWidth = ctx.measureText(label).width;
+            
+            // Background for text
+            ctx.fillStyle = isPhone ? '#003300' : '#333333';
+            ctx.fillRect(x, y - 16, textWidth + 8, 16);
+            
+            // Text
+            ctx.fillStyle = isPhone ? '#00ff00' : '#cccccc';
+            ctx.fillText(label, x + 4, y - 4);
+        }
+
+        function updateStatus(message, className = '') {
+            status.textContent = message;
+            status.className = `status ${className}`;
+        }
+
+        async function startCamera() {
+            try {
+                startBtn.disabled = true;
+                phoneDetected = false;
+                phoneFoundDiv.style.display = 'none';
+                
+                updateStatus('🎥 Starting camera...', 'loading');
+                await setupCamera();
+                
+                updateStatus('🔄 Loading AI model...', 'loading');
+                if (!model) {
+                    await loadModel();
+                }
+                
+                updateStatus('🔍 Scanning for mobile devices...', 'detecting');
+                isDetecting = true;
+                stopBtn.disabled = false;
+                
+                // Start detection loop
+                detectionInterval = setInterval(detectObjects, 200); // 5 FPS for better performance
+                
+            } catch (err) {
+                console.error('Error starting camera:', err);
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                updateStatus('❌ Failed to start camera. Please check permissions.', 'error');
+            }
+        }
+
+        function stopCamera() {
+            // Stop the detection process
+            stopDetection();
+            
+            // Stop all camera stream tracks to release the camera
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            // Reset video element and make it visible again
+            if (video) {
+                video.srcObject = null;
+                video.style.visibility = 'visible';
+                video.style.opacity = '1';
+            }
+            
+            // Clear the canvas and reset its positioning
+            if (ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+            if (canvas) {
+                canvas.style.position = 'absolute'; // Reset to overlay position
+                canvas.style.transform = 'translateX(-50%)'; // Reset centering
+            }
+            
+            // Reset button states and UI
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            phoneDetected = false;
+            phoneFoundDiv.style.display = 'none';
+            updateStatus('📷 Camera stopped. Click "Start Camera" to begin detection.');
+        }
+
+        function stopDetection() {
+            isDetecting = false;
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+
+        // Initialize TensorFlow.js backend
+        tf.ready().then(() => {
+            console.log('TensorFlow.js is ready!');
+        });
+    </script>
+</body>
+</html>
